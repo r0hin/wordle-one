@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    // Your existing compiler options, for example:
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM"],
+    "module": "CommonJS",
+    "strict": true,
+    "esModuleInterop": true,
+    "outDir": "./dist",
+    "skipLibCheck": true
+  },
+  "include": ["run.ts", "words.ts"],
+  "exclude": ["**/*.js"]
+}
