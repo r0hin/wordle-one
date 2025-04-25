@@ -68,7 +68,7 @@ def initialize_text_overlay_class():
 
             # Make it transparent
             self.setBackgroundColor_(AppKit.NSColor.clearColor())
-            self.setAlphaValue_(0.15)
+            self.setAlphaValue_(0.23)
             self.setOpaque_(False)
 
             # Make it float above everything, including menu bar
@@ -80,11 +80,16 @@ def initialize_text_overlay_class():
                 AppKit.NSWindowCollectionBehaviorCanJoinAllSpaces
             )
 
-            # Split the text into two halves
+            # Split the text into two halves only if it's more than 7 characters long
             text_length = len(text)
-            mid_point = text_length // 2
-            first_half = text[:mid_point]
-            second_half = text[mid_point:]
+            if text_length > 7:
+                mid_point = text_length // 2
+                first_half = text[:mid_point]
+                second_half = text[mid_point:]
+            else:
+                # If 7 characters or less, display the whole text in the left field
+                first_half = text
+                second_half = ""
 
             # Create text field for first half (bottom left, light gray)
             left_field = AppKit.NSTextField.alloc().initWithFrame_(
@@ -146,11 +151,28 @@ def create_text_window(initial_text="READY"):
         print("Cannot create TextOverlay class: PyObjC not properly initialized")
         return None
 
-    # Create the window
-    window = TextOverlay.alloc().initWithText_(initial_text)
-    if window:
-        print(f"Created text overlay with initial text: '{initial_text}'")
-    return window
+    try:
+        # Close existing window if it exists to prevent resource leaks
+        global _text_window
+        if _text_window is not None:
+            try:
+                _text_window.close()
+            except Exception as e:
+                print(f"Error closing existing window: {e}")
+        
+        # Create the window
+        window = TextOverlay.alloc().initWithText_(initial_text)
+        if window:
+            print(f"Created text overlay with initial text: '{initial_text}'")
+            # Ensure window is displayed and comes to front
+            window.orderFrontRegardless()
+            return window
+        else:
+            print("Failed to create window object")
+            return None
+    except Exception as e:
+        print(f"Exception creating text window: {e}")
+        return None
 
 
 def update_text_overlay(text):
@@ -161,33 +183,65 @@ def update_text_overlay(text):
         print(f"Cannot update text: PyObjC not available")
         return
 
-    if (
-        _text_window
-        and hasattr(_text_window, "left_field")
-        and hasattr(_text_window, "right_field")
-    ):
-        # Try to update existing window with split text
-        try:
-            # Split the text into two halves
-            text_length = len(text)
-            mid_point = text_length // 2
-            first_half = text[:mid_point]
-            second_half = text[mid_point:]
+    max_retries = 3
+    retry_count = 0
+    success = False
 
-            print(f"Updating existing window text to: '{text}'")
+    while retry_count < max_retries and not success:
+        if (
+            _text_window is not None
+            and hasattr(_text_window, "left_field")
+            and hasattr(_text_window, "right_field")
+        ):
+            # Try to update existing window with split text
+            try:
+                # Split the text into two halves only if it's more than 7 characters long
+                text_length = len(text)
+                if text_length > 7:
+                    mid_point = text_length // 2
+                    first_half = text[:mid_point]
+                    second_half = text[mid_point:]
+                else:
+                    # If 7 characters or less, display the whole text in the left field
+                    first_half = text
+                    second_half = ""
 
-            _text_window.left_field.setStringValue_(first_half)
-            _text_window.right_field.setStringValue_(second_half)
-            _text_window.orderFrontRegardless()
-            return
-        except Exception as e:
-            print(f"Error updating existing window: {e}")
-            # Fall through to create new window
+                print(f"Updating existing window text to: '{text}'")
 
-    # Create a new window as a fallback
-    print(f"Creating new text window with: '{text}'")
-    _text_window = create_text_window(text)
-    print(f"Text window updated to: '{text}'")
+                # Check if fields are still valid
+                if _text_window.left_field and _text_window.right_field:
+                    _text_window.left_field.setStringValue_(first_half)
+                    _text_window.right_field.setStringValue_(second_half)
+                    _text_window.orderFrontRegardless()
+                    success = True
+                    return
+                else:
+                    print("Text fields not accessible, recreating window")
+                    raise Exception("Invalid text fields")
+            except Exception as e:
+                print(f"Error updating existing window (attempt {retry_count+1}): {e}")
+                retry_count += 1
+                # Force create a new window on the next attempt
+                _text_window = None
+        else:
+            # Create a new window as a fallback
+            print(f"Creating new text window with: '{text}'")
+            try:
+                new_window = create_text_window(text)
+                if new_window is not None:
+                    _text_window = new_window
+                    success = True
+                    print(f"Text window updated to: '{text}'")
+                    return
+                else:
+                    print("Failed to create new window")
+                    retry_count += 1
+            except Exception as e:
+                print(f"Error creating new window (attempt {retry_count+1}): {e}")
+                retry_count += 1
+
+    if not success:
+        print("Failed to update text overlay after multiple attempts")
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -228,9 +282,15 @@ class RequestHandler(BaseHTTPRequestHandler):
             # Update the text display directly
             if OBJC_AVAILABLE:
                 # Make sure UI updates happen on the main thread
-                Foundation.NSOperationQueue.mainQueue().addOperationWithBlock_(
-                    lambda: update_text_overlay(text)
-                )
+                # Create a separate block to capture the current text value
+                text_to_update = str(text)  # Create a copy of the text
+                def update_block():
+                    try:
+                        update_text_overlay(text_to_update)
+                    except Exception as e:
+                        print(f"Error in update operation: {e}")
+                
+                Foundation.NSOperationQueue.mainQueue().addOperationWithBlock_(update_block)
                 print(f"Text update dispatched for: '{text}'")
             else:
                 print("Cannot update UI: PyObjC not available")
