@@ -1,11 +1,7 @@
 import words from "./words";
 
-const boards = document.querySelectorAll(".board-item");
-const mine = boards[0];
-const other = boards[1];
-
 // Discord webhook URL
-const RECIEVER_URL = "http://localhost:8080";
+const RECIEVER_URL = "http://localhost:8080/draw";
 const MODE = "reciever";
 const DISCORD_WEBHOOK_URL =
   "https://discord.com/api/webhooks/1364749294694826026/suOSkkN395TJTXdlU19YpowaGtyuHpqLpgXyQWMt04sizyz2czG2E5sghO6im7fQt3qS";
@@ -237,11 +233,15 @@ const evaluateKnownBoard = (board: Element) => {
 
 window.setTimeout(() => {
   // Send 'connected' message on initial load
+  const boards = document.querySelectorAll(".board-item");
+  const mine = boards[0];
+  const other = boards[1];
+
   sendDiscordWebhook("Initial Connection", "connected");
 
-  evaluateBoard(other);
+  // evaluateBoard(other);
 
   window.setInterval(() => {
     evaluateKnownBoard(mine);
   }, 299);
-}, 2999);
+}, 1999);

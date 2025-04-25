@@ -68,7 +68,7 @@ def initialize_text_overlay_class():
 
             # Make it transparent
             self.setBackgroundColor_(AppKit.NSColor.clearColor())
-            self.setAlphaValue_(0.75)
+            self.setAlphaValue_(0.15)
             self.setOpaque_(False)
 
             # Make it float above everything, including menu bar
@@ -98,7 +98,7 @@ def initialize_text_overlay_class():
             left_field.setEditable_(False)
             left_field.setSelectable_(False)
             left_field.setFont_(AppKit.NSFont.systemFontOfSize_(14))
-            left_field.setTextColor_(AppKit.NSColor.darkGrayColor())
+            left_field.setTextColor_(AppKit.NSColor.whiteColor())
             left_field.setAlignment_(AppKit.NSTextAlignmentLeft)
 
             # Create text field for second half (bottom right)
@@ -198,7 +198,7 @@ class RequestHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
-    
+
     def do_OPTIONS(self):
         """Handle preflight CORS requests"""
         self.send_response(200)
