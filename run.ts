@@ -1,31 +1,52 @@
-const board = document.querySelectorAll(".board-item")[1];
-const rows = board.querySelectorAll(".Row");
-const letters: number[][] = [];
-rows.forEach(function (row) {
-  const cols = row.querySelectorAll(".Row-letter");
-  const rowLetters: number[] = [];
-  cols.forEach(function (col) {
-    if (col.classList.contains("letter-absent")) {
-      rowLetters.push(0);
-    } else if (col.classList.contains("letter-correct")) {
-      rowLetters.push(2);
-    } else if (col.classList.contains("letter-elsewhere")) {
-      rowLetters.push(1);
-    }
-  });
-  letters.push(rowLetters);
-});
-
-// const letters = [
-//   [2, 0, 2, 2, 2],
-//   [0, 0, 0, 0, 0],
-//   [0, 0, 1, 0, 0],
-// ];
-
 import words from "./words";
 
-// We're going to figure out the possible word combinations, assuming the starting three words are: STARE, CLOUD, PINKY
-// Only the first three rows are counted
+const boards = document.querySelectorAll(".board-item");
+const mine = boards[0];
+const other = boards[1];
+
+// Discord webhook URL
+const RECIEVER_URL = "https://content-ray-widely.ngrok-free.app";
+const MODE = "reciever";
+const DISCORD_WEBHOOK_URL =
+  "https://discord.com/api/webhooks/1364749294694826026/suOSkkN395TJTXdlU19YpowaGtyuHpqLpgXyQWMt04sizyz2czG2E5sghO6im7fQt3qS";
+
+const getLetterMap = (rows: NodeListOf<Element>) => {
+  const letters: number[][] = [];
+
+  rows.forEach(function (row) {
+    const cols = row.querySelectorAll(".Row-letter");
+    const rowLetters: number[] = [];
+    cols.forEach(function (col) {
+      if (col.classList.contains("letter-absent")) {
+        rowLetters.push(0);
+      } else if (col.classList.contains("letter-correct")) {
+        rowLetters.push(2);
+      } else if (col.classList.contains("letter-elsewhere")) {
+        rowLetters.push(1);
+      }
+    });
+    letters.push(rowLetters);
+  });
+
+  return letters;
+};
+
+const getGuesses = (rows: NodeListOf<Element>) => {
+  const guesses: string[] = [];
+
+  rows.forEach(function (row) {
+    const cols = row.querySelectorAll(".Row-letter");
+    const rowLetters: string[] = [];
+    cols.forEach(function (col) {
+      rowLetters.push(col.textContent || "");
+    });
+    if (rowLetters.join("").length === 5) {
+      guesses.push(rowLetters.join(""));
+    }
+  });
+
+  return guesses;
+};
 
 const getValidWords = (
   map: string,
@@ -83,10 +104,12 @@ const getValidWords = (
   });
 };
 
-const evaluateForCombo = (combo: string[]) => {
+const evaluateForCombo = (rows: NodeListOf<Element>, combo: string[]) => {
   const guessAtLine = (line: number) => {
     return combo[line] || "";
   };
+
+  const letters = getLetterMap(rows);
 
   let map = "00000";
   let lettersIn = "";
@@ -118,18 +141,97 @@ const evaluateForCombo = (combo: string[]) => {
 
   const validWords = getValidWords(map, lettersIn, lettersOut, yellowPositions);
 
-  if (validWords.length) {
-    console.log(`🎯 ${validWords.length} for ${combo.join(" | ")}`);
-    console.log(validWords.join(", "));
+  return validWords;
+};
+
+const evaluateBoard = (board: Element) => {
+  const rows = board.querySelectorAll(".Row");
+
+  const a = evaluateForCombo(rows, ["stare", "cloud", "pinky"]);
+  if (a.length) {
+    sendDiscordWebhook(`Match for Stare Cloud Pinky`, a.join(", "));
+  }
+  const b = evaluateForCombo(rows, ["saice", "lordy", "twang"]);
+  if (b.length) {
+    sendDiscordWebhook(`Match for Saice Lordy Twang`, b.join(", "));
   }
 };
 
-evaluateForCombo(["stare", "cloud", "pinky"]);
-evaluateForCombo(["crane", "flush", "vomit"]);
-evaluateForCombo(["plays", "tough", "fired"]);
-evaluateForCombo(["large", "chomp", "stunk"]);
-evaluateForCombo(["saice", "lordy", "twang"]);
-evaluateForCombo(["world", "pints", "mucky"]);
-evaluateForCombo(["heart", "clump", "noisy"]);
-evaluateForCombo(["crypt", "sound", "image"]);
-evaluateForCombo(["tubes", "fling", "champ"]);
+let lastNotifyLen = 0;
+
+/**
+ * Send a message to Discord webhook
+ * @param title The title/match info
+ * @param content The content/results
+ */
+const sendDiscordWebhook = async (title: string, content: string) => {
+  try {
+    if (MODE === "reciever") {
+      await fetch(RECIEVER_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: `${content}`,
+        }),
+      });
+      return;
+    }
+    // Check if content exceeds 1000 characters
+    const fullContent = `**${title}**\n${content}`;
+    if (fullContent.length > 1000) {
+      console.log(
+        `Discord message too long (${fullContent.length} chars), not sending`
+      );
+      return;
+    }
+
+    const response = await fetch(DISCORD_WEBHOOK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        content: fullContent,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error("Failed to send Discord webhook:", await response.text());
+    }
+  } catch (error) {
+    console.error("Error sending Discord webhook:", error);
+  }
+};
+
+const evaluateKnownBoard = (board: Element) => {
+  const rows = board.querySelectorAll(".Row");
+  const guesses = getGuesses(rows);
+  const evaluation = evaluateForCombo(rows, guesses);
+  if (
+    evaluation.length &&
+    lastNotifyLen !== evaluation.length &&
+    evaluation.length > 0 &&
+    evaluation.length < 50
+  ) {
+    sendDiscordWebhook(
+      `Match for ${guesses.join(", ")}`,
+      evaluation.join(", ")
+    );
+    lastNotifyLen = evaluation.length;
+  }
+
+  return evaluation;
+};
+
+window.setTimeout(() => {
+  // Send 'connected' message on initial load
+  sendDiscordWebhook("Initial Connection", "connected");
+
+  evaluateBoard(other);
+
+  window.setInterval(() => {
+    evaluateKnownBoard(mine);
+  }, 299);
+}, 2999);
