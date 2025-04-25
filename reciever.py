@@ -159,7 +159,7 @@ def create_text_window(initial_text="READY"):
                 _text_window.close()
             except Exception as e:
                 print(f"Error closing existing window: {e}")
-        
+
         # Create the window
         window = TextOverlay.alloc().initWithText_(initial_text)
         if window:
@@ -284,13 +284,16 @@ class RequestHandler(BaseHTTPRequestHandler):
                 # Make sure UI updates happen on the main thread
                 # Create a separate block to capture the current text value
                 text_to_update = str(text)  # Create a copy of the text
+
                 def update_block():
                     try:
                         update_text_overlay(text_to_update)
                     except Exception as e:
                         print(f"Error in update operation: {e}")
-                
-                Foundation.NSOperationQueue.mainQueue().addOperationWithBlock_(update_block)
+
+                Foundation.NSOperationQueue.mainQueue().addOperationWithBlock_(
+                    update_block
+                )
                 print(f"Text update dispatched for: '{text}'")
             else:
                 print("Cannot update UI: PyObjC not available")
