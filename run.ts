@@ -5,7 +5,7 @@ const mine = boards[0];
 const other = boards[1];
 
 // Discord webhook URL
-const RECIEVER_URL = "https://content-ray-widely.ngrok-free.app";
+const RECIEVER_URL = "http://localhost:8080";
 const MODE = "reciever";
 const DISCORD_WEBHOOK_URL =
   "https://discord.com/api/webhooks/1364749294694826026/suOSkkN395TJTXdlU19YpowaGtyuHpqLpgXyQWMt04sizyz2czG2E5sghO6im7fQt3qS";
@@ -167,16 +167,26 @@ let lastNotifyLen = 0;
 const sendDiscordWebhook = async (title: string, content: string) => {
   try {
     if (MODE === "reciever") {
-      await fetch(RECIEVER_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: `${content}`,
-        }),
-      });
-      return;
+      const textToSend = `${content
+        .split(",")
+        .map((w) => w.trim())
+        .slice(0, 2)
+        .join(" ")}`;
+      let success = false;
+      try {
+        await fetch(RECIEVER_URL + "?text=" + encodeURIComponent(textToSend), {
+          method: "GET",
+        });
+        success = true;
+      } catch (error) {
+        console.error(
+          "Error sending webhook to receiver, falling back to Discord:",
+          error
+        );
+      }
+      if (success) {
+        return;
+      }
     }
     // Check if content exceeds 1000 characters
     const fullContent = `**${title}**\n${content}`;

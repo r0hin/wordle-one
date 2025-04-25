@@ -24,28 +24,35 @@ current_text = "READY"
 text_lock = threading.Lock()
 _text_window = None  # Direct reference to text window
 shutdown_flag = threading.Event()
+_TextOverlay = None  # Will hold our TextOverlay class once initialized
 
 
-def create_text_window(initial_text="READY"):
-    """Create the floating text window that will display the text"""
-    # Skip if PyObjC isn't available
+def initialize_text_overlay_class():
+    """Initialize the TextOverlay class only when PyObjC is available"""
+    global _TextOverlay
+
+    if _TextOverlay is not None:
+        return _TextOverlay
+
     if not OBJC_AVAILABLE:
-        print("Cannot create window: PyObjC not available")
         return None
 
-    # Create a simple window class to display text
+    # Define the TextOverlay class when needed
     class TextOverlay(AppKit.NSWindow):
+        """A transparent window that displays text split into two parts"""
+
         def initWithText_(self, text):
             # Get the main screen
             screen = AppKit.NSScreen.mainScreen()
             if not screen:
                 return None
 
-            # Set up window in top right corner
-            width, height = 300, 50
+            # Set up window at bottom of screen spanning full width
+            width = screen.frame().size.width
+            height = 40
             screen_rect = screen.frame()
-            x = screen_rect.size.width - width - 10
-            y = screen_rect.size.height - height - 25  # Allow space for menu bar
+            x = 20
+            y = -20  # Position closer to bottom of screen
             window_rect = Foundation.NSMakeRect(x, y, width, height)
 
             # Create a borderless window
@@ -61,39 +68,83 @@ def create_text_window(initial_text="READY"):
 
             # Make it transparent
             self.setBackgroundColor_(AppKit.NSColor.clearColor())
-            self.setAlphaValue_(1.0)
+            self.setAlphaValue_(0.75)
             self.setOpaque_(False)
 
             # Make it float above everything, including menu bar
-            self.setLevel_(AppKit.NSFloatingWindowLevel)
+            # Use a higher level to make absolutely sure it's on top
+            self.setLevel_(AppKit.NSStatusWindowLevel + 2)
 
             # Make sure it's visible everywhere
             self.setCollectionBehavior_(
                 AppKit.NSWindowCollectionBehaviorCanJoinAllSpaces
             )
 
-            # Create text label
-            text_field = AppKit.NSTextField.alloc().initWithFrame_(
-                Foundation.NSMakeRect(0, 0, width, height)
+            # Split the text into two halves
+            text_length = len(text)
+            mid_point = text_length // 2
+            first_half = text[:mid_point]
+            second_half = text[mid_point:]
+
+            # Create text field for first half (bottom left, light gray)
+            left_field = AppKit.NSTextField.alloc().initWithFrame_(
+                Foundation.NSMakeRect(20, 0, width / 2 - 40, height)
             )
 
-            # Configure text appearance
-            text_field.setStringValue_(text)
-            text_field.setDrawsBackground_(False)
-            text_field.setBezeled_(False)
-            text_field.setEditable_(False)
-            text_field.setSelectable_(False)
-            text_field.setFont_(AppKit.NSFont.boldSystemFontOfSize_(22))
-            text_field.setTextColor_(AppKit.NSColor.yellowColor())
-            text_field.setAlignment_(AppKit.NSTextAlignmentCenter)
+            # Configure left text appearance
+            left_field.setStringValue_(first_half)
+            left_field.setDrawsBackground_(False)
+            left_field.setBezeled_(False)
+            left_field.setEditable_(False)
+            left_field.setSelectable_(False)
+            left_field.setFont_(AppKit.NSFont.systemFontOfSize_(14))
+            left_field.setTextColor_(AppKit.NSColor.darkGrayColor())
+            left_field.setAlignment_(AppKit.NSTextAlignmentLeft)
+
+            # Create text field for second half (bottom right)
+            right_field = AppKit.NSTextField.alloc().initWithFrame_(
+                Foundation.NSMakeRect(width / 2 + 20, 0, width / 2 - 40, height)
+            )
+
+            # Configure right text appearance
+            right_field.setStringValue_(second_half)
+            right_field.setDrawsBackground_(False)
+            right_field.setBezeled_(False)
+            right_field.setEditable_(False)
+            right_field.setSelectable_(False)
+            right_field.setFont_(AppKit.NSFont.systemFontOfSize_(14))
+            right_field.setTextColor_(AppKit.NSColor.darkGrayColor())
+            right_field.setAlignment_(AppKit.NSTextAlignmentRight)
 
             # Add to window
-            self.contentView().addSubview_(text_field)
-            self.text_field = text_field
+            self.contentView().addSubview_(left_field)
+            self.contentView().addSubview_(right_field)
+
+            # Store references to both text fields
+            self.left_field = left_field
+            self.right_field = right_field
 
             # Show window
-            self.makeKeyAndOrderFront_(None)
+            self.orderFrontRegardless()
             return self
+
+    # Store the class for reuse
+    _TextOverlay = TextOverlay
+    return TextOverlay
+
+
+def create_text_window(initial_text="READY"):
+    """Create the floating text window that will display the text"""
+    # Skip if PyObjC isn't available
+    if not OBJC_AVAILABLE:
+        print("Cannot create window: PyObjC not available")
+        return None
+
+    # Get the TextOverlay class
+    TextOverlay = initialize_text_overlay_class()
+    if not TextOverlay:
+        print("Cannot create TextOverlay class: PyObjC not properly initialized")
+        return None
 
     # Create the window
     window = TextOverlay.alloc().initWithText_(initial_text)
@@ -103,33 +154,56 @@ def create_text_window(initial_text="READY"):
 
 
 def update_text_overlay(text):
-    """Update the text in the floating overlay window"""
+    """Update the text in the floating overlay window by creating a new one"""
     global _text_window
 
     if not OBJC_AVAILABLE:
         print(f"Cannot update text: PyObjC not available")
         return
 
-    if not _text_window:
-        print("Creating new text window...")
-        _text_window = create_text_window(text)
-        return
+    if (
+        _text_window
+        and hasattr(_text_window, "left_field")
+        and hasattr(_text_window, "right_field")
+    ):
+        # Try to update existing window with split text
+        try:
+            # Split the text into two halves
+            text_length = len(text)
+            mid_point = text_length // 2
+            first_half = text[:mid_point]
+            second_half = text[mid_point:]
 
-    # Must run on main thread
-    def update_on_main():
-        if hasattr(_text_window, "text_field"):
-            _text_window.text_field.setStringValue_(text)
-            _text_window.makeKeyAndOrderFront_(None)
-            print(f"Text display updated to: '{text}'")
+            print(f"Updating existing window text to: '{text}'")
 
-    # Run on main thread
-    AppKit.NSApp.performSelectorOnMainThread_withObject_waitUntilDone_(
-        "performSelector:withObject:", (update_on_main, None), True
-    )
+            _text_window.left_field.setStringValue_(first_half)
+            _text_window.right_field.setStringValue_(second_half)
+            _text_window.orderFrontRegardless()
+            return
+        except Exception as e:
+            print(f"Error updating existing window: {e}")
+            # Fall through to create new window
+
+    # Create a new window as a fallback
+    print(f"Creating new text window with: '{text}'")
+    _text_window = create_text_window(text)
+    print(f"Text window updated to: '{text}'")
 
 
 class RequestHandler(BaseHTTPRequestHandler):
     """HTTP handler for the /draw endpoint"""
+
+    def _set_cors_headers(self):
+        """Helper method to set CORS headers"""
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+    
+    def do_OPTIONS(self):
+        """Handle preflight CORS requests"""
+        self.send_response(200)
+        self._set_cors_headers()
+        self.end_headers()
 
     def do_GET(self):
         global current_text
@@ -153,8 +227,10 @@ class RequestHandler(BaseHTTPRequestHandler):
 
             # Update the text display directly
             if OBJC_AVAILABLE:
-                # Direct update with no delegates or complex chains
-                update_text_overlay(text)
+                # Make sure UI updates happen on the main thread
+                Foundation.NSOperationQueue.mainQueue().addOperationWithBlock_(
+                    lambda: update_text_overlay(text)
+                )
                 print(f"Text update dispatched for: '{text}'")
             else:
                 print("Cannot update UI: PyObjC not available")
@@ -162,12 +238,14 @@ class RequestHandler(BaseHTTPRequestHandler):
             # Send a 200 OK response
             self.send_response(200)
             self.send_header("Content-type", "text/plain")
+            self._set_cors_headers()
             self.end_headers()
             self.wfile.write(b"Text updated")
         else:
             # Send a 404 Not Found response
             self.send_response(404)
             self.send_header("Content-type", "text/plain")
+            self._set_cors_headers()
             self.end_headers()
             self.wfile.write(b"Not found")
 
