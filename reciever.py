@@ -13,6 +13,7 @@ try:
     import Cocoa
     import Foundation
     import AppKit
+
     OBJC_AVAILABLE = True
 except ImportError:
     print("Error: PyObjC components not available")
@@ -31,7 +32,7 @@ def create_text_window(initial_text="READY"):
     if not OBJC_AVAILABLE:
         print("Cannot create window: PyObjC not available")
         return None
-    
+
     # Create a simple window class to display text
     class TextOverlay(AppKit.NSWindow):
         def initWithText_(self, text):
@@ -39,41 +40,43 @@ def create_text_window(initial_text="READY"):
             screen = AppKit.NSScreen.mainScreen()
             if not screen:
                 return None
-                
+
             # Set up window in top right corner
             width, height = 300, 50
             screen_rect = screen.frame()
             x = screen_rect.size.width - width - 10
             y = screen_rect.size.height - height - 25  # Allow space for menu bar
             window_rect = Foundation.NSMakeRect(x, y, width, height)
-            
+
             # Create a borderless window
             self = super().initWithContentRect_styleMask_backing_defer_(
                 window_rect,
                 AppKit.NSWindowStyleMaskBorderless,
                 AppKit.NSBackingStoreBuffered,
-                False
+                False,
             )
-            
+
             if not self:
                 return None
-                
+
             # Make it transparent
             self.setBackgroundColor_(AppKit.NSColor.clearColor())
             self.setAlphaValue_(1.0)
             self.setOpaque_(False)
-            
+
             # Make it float above everything, including menu bar
             self.setLevel_(AppKit.NSFloatingWindowLevel)
-            
+
             # Make sure it's visible everywhere
-            self.setCollectionBehavior_(AppKit.NSWindowCollectionBehaviorCanJoinAllSpaces)
-            
+            self.setCollectionBehavior_(
+                AppKit.NSWindowCollectionBehaviorCanJoinAllSpaces
+            )
+
             # Create text label
             text_field = AppKit.NSTextField.alloc().initWithFrame_(
                 Foundation.NSMakeRect(0, 0, width, height)
             )
-            
+
             # Configure text appearance
             text_field.setStringValue_(text)
             text_field.setDrawsBackground_(False)
@@ -83,46 +86,45 @@ def create_text_window(initial_text="READY"):
             text_field.setFont_(AppKit.NSFont.boldSystemFontOfSize_(22))
             text_field.setTextColor_(AppKit.NSColor.yellowColor())
             text_field.setAlignment_(AppKit.NSTextAlignmentCenter)
-            
+
             # Add to window
             self.contentView().addSubview_(text_field)
             self.text_field = text_field
-            
+
             # Show window
             self.makeKeyAndOrderFront_(None)
             return self
-    
+
     # Create the window
     window = TextOverlay.alloc().initWithText_(initial_text)
     if window:
         print(f"Created text overlay with initial text: '{initial_text}'")
     return window
 
+
 def update_text_overlay(text):
     """Update the text in the floating overlay window"""
     global _text_window
-    
+
     if not OBJC_AVAILABLE:
         print(f"Cannot update text: PyObjC not available")
         return
-        
+
     if not _text_window:
         print("Creating new text window...")
         _text_window = create_text_window(text)
         return
-        
+
     # Must run on main thread
     def update_on_main():
-        if hasattr(_text_window, 'text_field'):
+        if hasattr(_text_window, "text_field"):
             _text_window.text_field.setStringValue_(text)
             _text_window.makeKeyAndOrderFront_(None)
             print(f"Text display updated to: '{text}'")
-    
+
     # Run on main thread
     AppKit.NSApp.performSelectorOnMainThread_withObject_waitUntilDone_(
-        "performSelector:withObject:", 
-        (update_on_main, None),
-        True
+        "performSelector:withObject:", (update_on_main, None), True
     )
 
 
@@ -176,34 +178,35 @@ class RequestHandler(BaseHTTPRequestHandler):
 
 class BasicAppDelegate(AppKit.NSObject):
     """Minimal app delegate just for handling application lifecycle"""
-    
+
     def init(self):
         self = super().init()
         return self
-    
+
     def applicationDidFinishLaunching_(self, notification):
         # Create the text overlay with the initial text
         global _text_window, current_text
-        
+
         with text_lock:
             text = current_text
-        
+
         # Create the text window
         _text_window = create_text_window(text)
-        
+
         # Setup keyboard monitoring for quit
         self.setupKeyboardMonitoring()
-        
+
         print("Application initialized with text overlay")
-    
+
     def setupKeyboardMonitoring(self):
         # Set up keyboard event monitoring
         event_mask = AppKit.NSEventMaskKeyDown
-        self.key_monitor = AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
-            event_mask,
-            self.handleKeyEvent_
+        self.key_monitor = (
+            AppKit.NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
+                event_mask, self.handleKeyEvent_
+            )
         )
-    
+
     def handleKeyEvent_(self, event):
         # Check for Escape key or Ctrl+C
         if event.keyCode() == 53:  # Escape key
@@ -211,12 +214,12 @@ class BasicAppDelegate(AppKit.NSObject):
         elif event.keyCode() == 8 and (event.modifierFlags() & 0x40000):  # Ctrl+C
             print("\nCtrl+C detected, shutting down...")
             self.quitApp_(None)
-    
+
     def applicationWillTerminate_(self, notification):
         global shutdown_flag
         print("Application will terminate, cleaning up...")
         shutdown_flag.set()
-    
+
     def quitApp_(self, sender):
         print("Quitting application...")
         global shutdown_flag
