@@ -140,6 +140,10 @@ const evaluateForCombo = (rows: NodeListOf<Element>, combo: string[]) => {
   return validWords;
 };
 
+const randomize = (arr: string[]) => {
+  return arr.sort(() => Math.random() - 0.5);
+};
+
 const evaluateBoard = (board: Element) => {
   const rows = board.querySelectorAll(".Row");
 
@@ -223,7 +227,7 @@ const evaluateKnownBoard = (board: Element) => {
   ) {
     sendDiscordWebhook(
       `Match for ${guesses.join(", ")}`,
-      evaluation.join(", ")
+      randomize(evaluation).join(", ")
     );
     lastNotifyLen = evaluation.length;
   }
